@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Environment
+.env
+.env.local
+
+# Databases + vector store (rebuilt on first run)
+assistant.db
+assistant.db-*
+chroma_db/
+
+# Whisper model cache
+.cache/
+
+# Node / Vite
+node_modules/
+dist/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
