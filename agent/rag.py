@@ -16,6 +16,8 @@ embeddings = HuggingFaceEmbeddings(
     model_name="all-MiniLM-L6-v2",
     encode_kwargs={"normalize_embeddings": True},
 )
+
+#set up chroma db for chunking
 vector_store = Chroma(
     embedding_function=embeddings,
     persist_directory="./chroma_db",
