@@ -78,6 +78,22 @@ class VideoRequest(BaseModel):
     url1: str  # becomes Video A
     url2: str  # becomes Video B
 
+@app.post("/analyze_videos")
+def analyze_videos(request: VideoRequest, current_user: UserContext = Depends(get_current_user)):
+    """
+    Processes two videos (YouTube or Instagram).
+    url1 → Video A, url2 → Video B.
+    video_label is stored in both ChromaDB and SQLite for citation and comparison.
+    """
+    res1 = process_video(request.url1, current_user.tenant_id, video_label="A")
+    res2 = process_video(request.url2, current_user.tenant_id, video_label="B")
+
+    if "error" in res1:
+        raise HTTPException(status_code=400, detail=f"Error Video A: {res1['error']}")
+    if "error" in res2:
+        raise HTTPException(status_code=400, detail=f"Error Video B: {res2['error']}")
+
+    return {"message": "Both videos analyzed and added to the Knowledge Base."}
 
 class ChatRequest(BaseModel):
     message: str
