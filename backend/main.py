@@ -99,6 +99,16 @@ class ChatRequest(BaseModel):
     message: str
     history: str = ""
 
+@app.post("/chat")
+def chat(request: ChatRequest, current_user: UserContext = Depends(get_current_user)):
+    """Synchronous chat — kept for Streamlit fallback."""
+    try:
+        response = run_agent(request.message, request.history, current_user.tenant_id)
+        return {"reply": response}
+    except Exception as e:
+        # Surface upstream LLM errors as readable 502s instead of opaque 500s.
+        raise HTTPException(status_code=502, detail=f"Agent error: {type(e).__name__}: {e}")
+
 
 @app.post("/chat/stream")
 async def chat_stream(request: ChatRequest, current_user: UserContext = Depends(get_current_user)):
