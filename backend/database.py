@@ -20,6 +20,27 @@ class User(SQLModel, table=True):
     tenant_id: int = Field(foreign_key="tenant.id")
 
 
+# video table — extended with platform metadata + video_label for citations
+class VideoMetadata(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    url: str = Field(index=True)
+    title: str
+    creator: str
+    views: int
+    likes: int
+    comments: int
+    subs: int
+    engagement_rate: float
+    hook_text: str = Field(default="")
+    hashtags: str = Field(default="[]")        # JSON list string, e.g. '["#tech","#ai"]'
+    upload_date: str = Field(default="")        # YYYYMMDD, e.g. "20240315"
+    duration: int = Field(default=0)            # seconds
+    platform: str = Field(default="youtube")    # "youtube" or "instagram"
+    video_label: str = Field(default="A")       # "A" or "B" per analysis session
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
 class AgentTrace(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     session_id: str = Field(index=True)
