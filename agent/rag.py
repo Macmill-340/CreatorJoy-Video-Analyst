@@ -16,12 +16,27 @@ embeddings = HuggingFaceEmbeddings(
     model_name="all-MiniLM-L6-v2",
     encode_kwargs={"normalize_embeddings": True},
 )
-
-#set up chroma db for chunking
 vector_store = Chroma(
     embedding_function=embeddings,
     persist_directory="./chroma_db",
 )
+
+# ── Whisper model (lazy-loaded on first Instagram request) ────────────────────
+_whisper_model = None
+
+
+def get_whisper_model():
+    """
+    Lazy-load faster-whisper. Uses 'base' model:
+    - ~74M parameters, good quality/speed tradeoff
+    - int8 quantization: halves memory, negligible quality loss
+    - CPU-only: no GPU required for demo
+    """
+    global _whisper_model
+    if _whisper_model is None:
+        from faster_whisper import WhisperModel
+        _whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
+    return _whisper_model
 
 
 # ── Platform detection ─────────────────────────────────────────────────────────
@@ -29,6 +44,8 @@ def detect_platform(url: str) -> str:
     """Returns 'youtube', 'instagram', or raises ValueError."""
     if "youtube.com" in url or "youtu.be" in url:
         return "youtube"
+    elif "instagram.com" in url or "instagr.am" in url:
+        return "instagram"
     else:
         raise ValueError(f"Unsupported platform URL: {url}")
 
@@ -134,6 +151,56 @@ def _fetch_youtube_transcript(info: dict) -> Tuple[str, str]:
 
     full_text = ' '.join(t for _, t in segments)
     hook_text = ' '.join(t for s, t in segments if s <= 5.0) or "No hook available."
+    return full_text, hook_text
+
+
+def _fetch_instagram_transcript(url: str) -> Tuple[str, str]:
+    """
+    Download Instagram Reel audio and transcribe with faster-whisper.
+
+    WHY faster-whisper over openai-whisper:
+    - 4x faster on CPU, same model weights (CTranslate2 backend)
+    - int8 quantization: ~400MB RAM for 'base' model
+    - Handles all audio formats yt-dlp produces (m4a, mp4, webm)
+
+    WHY not youtube-transcript-api or any caption approach:
+    - Instagram Reels have no caption API. Audio transcription is the only path.
+
+    Returns (full_text, hook_text).
+    """
+    model = get_whisper_model()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        audio_path = os.path.join(tmpdir, "audio.%(ext)s")
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": audio_path,
+            "quiet": True,
+            "no_warnings": True,
+            "postprocessors": [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "64",  # 64kbps: sufficient for speech, saves time
+            }],
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
+        # Find the downloaded file
+        mp3_file = os.path.join(tmpdir, "audio.mp3")
+        if not os.path.exists(mp3_file):
+            # Fallback: find whatever audio file was created
+            audio_files = [f for f in os.listdir(tmpdir) if f.startswith("audio.")]
+            if not audio_files:
+                raise Exception("Audio download failed — no file in tmpdir.")
+            mp3_file = os.path.join(tmpdir, audio_files[0])
+
+        # Transcribe
+        segments_iter, _ = model.transcribe(mp3_file, word_timestamps=False)
+        segments = list(segments_iter)  # consume the generator
+
+    full_text = ' '.join(seg.text.strip() for seg in segments)
+    hook_text = ' '.join(seg.text.strip() for seg in segments if seg.start <= 5.0) or "No hook available."
     return full_text, hook_text
 
 
