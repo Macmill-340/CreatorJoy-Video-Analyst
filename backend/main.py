@@ -78,6 +78,7 @@ class VideoRequest(BaseModel):
     url1: str  # becomes Video A
     url2: str  # becomes Video B
 
+
 @app.post("/analyze_videos")
 def analyze_videos(request: VideoRequest, current_user: UserContext = Depends(get_current_user)):
     """
@@ -95,9 +96,11 @@ def analyze_videos(request: VideoRequest, current_user: UserContext = Depends(ge
 
     return {"message": "Both videos analyzed and added to the Knowledge Base."}
 
+
 class ChatRequest(BaseModel):
     message: str
     history: str = ""
+
 
 @app.post("/chat")
 def chat(request: ChatRequest, current_user: UserContext = Depends(get_current_user)):
@@ -146,3 +149,11 @@ async def chat_stream(request: ChatRequest, current_user: UserContext = Depends(
             "X-Accel-Buffering": "no",  # disable nginx buffering if behind a proxy
         }
     )
+
+
+@app.get("/videos")
+def get_videos(current_user: UserContext = Depends(get_current_user), session: Session = Depends(get_session)):
+    videos = session.exec(
+        select(VideoMetadata).where(VideoMetadata.tenant_id == current_user.tenant_id)
+    ).all()
+    return videos

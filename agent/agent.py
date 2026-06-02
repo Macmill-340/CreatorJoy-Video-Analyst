@@ -75,6 +75,14 @@ def executor_node(state: AgentState):
 
         # Build cited context: prepend [Video A, Chunk N] to each chunk.
         # The LLM is instructed to include these tags in its answer.
+        cited_parts = []
+        for i, (chunk_text, video_label) in enumerate(results, 1):
+            tag = f"[Video {video_label}, Chunk {i}]"
+            cited_parts.append(f"{tag}\n{chunk_text}")
+
+        cited_context = "\n\n".join(cited_parts)
+        plain_context = "\n\n".join(chunk_text for chunk_text, _ in results)
+        return {"context": plain_context, "cited_context": cited_context}
 
 
     elif intent == "COMPARE":
