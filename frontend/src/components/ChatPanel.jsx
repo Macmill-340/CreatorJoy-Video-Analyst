@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { API } from '../api'
 
 export default function ChatPanel({ token, messages, setMessages }) {
   const [input, setInput] = useState('')
@@ -26,7 +27,7 @@ export default function ChatPanel({ token, messages, setMessages }) {
       .join('\n')
 
     try {
-      const res = await fetch('/api/chat/stream', {
+      const res = await fetch(`${API}/chat/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

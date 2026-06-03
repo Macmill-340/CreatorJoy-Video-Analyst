@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { API } from '../api'
 
 // Extract YouTube video ID for embed URL
 function getYouTubeEmbedUrl(url) {
@@ -103,7 +104,7 @@ export default function VideoPanel({ token, onVideosLoaded }) {
     setLoading(true)
     setStatus('Extracting metadata and transcripts...')
     try {
-      const res = await fetch('/api/analyze_videos', {
+      const res = await fetch(`${API}/analyze_videos`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

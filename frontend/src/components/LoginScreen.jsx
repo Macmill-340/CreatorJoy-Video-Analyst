@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { API } from '../api'
 
 export default function LoginScreen({ onLogin }) {
   const [username, setUsername] = useState('')
@@ -11,7 +12,7 @@ export default function LoginScreen({ onLogin }) {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch('/api/login', {
+      const res = await fetch(`${API}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ username, password }),
