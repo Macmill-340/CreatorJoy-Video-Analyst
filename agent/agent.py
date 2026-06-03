@@ -25,13 +25,13 @@ class AgentState(TypedDict):
 api_key = os.getenv("GEMINI_API_KEY")
 
 # Synchronous LLM for planner (classification, no streaming needed)
-base_llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash-lite", temperature=0.2, api_key=api_key)
+base_llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0.2, api_key=api_key)
 llm = base_llm | StrOutputParser()
 
 # Async streaming LLM for critic (final answer generation)
 # Same model, streaming=True enables token-by-token async iteration
 async_llm = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash-lite",
+    model="gemini-3.1-flash-lite",
     temperature=0.2,
     api_key=api_key,
     streaming=True,
@@ -106,15 +106,6 @@ def executor_node(state: AgentState):
                    "Please ingest two URLs first.")
 
             return {"context": ctx, "cited_context": ctx}
-
-        if len(videos) < 2:
-            ctx = (
-                "Error: fewer than 2 videos have been analyzed for this workspace. "
-                "Please ingest two video URLs first."
-            )
-            return {"context": ctx, "cited_context": ctx}
-
-        v2, v1 = videos[0], videos[1]  # newest first from DB, reverse for display
 
         ctx = (
             f"VIDEO A: '{v1.title}' by {v1.creator} [{v1.platform}]\n"
