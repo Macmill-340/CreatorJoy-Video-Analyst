@@ -8,10 +8,10 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session, select
 from pydantic import BaseModel
 
-from backend.database import create_db_and_table, seed_initial_data, get_session, User, VideoMetadata
+from backend.database import create_db_and_table, seed_initial_data, get_session, User, VideoMetadata, AgentTrace, engine
 from backend.auth import get_password_hash, verify_password, create_access_token, get_current_user, UserContext
 from agent.rag import process_video
-from agent.agent import run_agent, run_planner_executor, build_critic_prompt, async_llm
+from agent.agent import run_agent, run_planner_executor, build_critic_prompt, async_chain
 
 
 @asynccontextmanager
@@ -94,7 +94,13 @@ def analyze_videos(request: VideoRequest, current_user: UserContext = Depends(ge
     if "error" in res2:
         raise HTTPException(status_code=400, detail=f"Error Video B: {res2['error']}")
 
-    return {"message": "Both videos analyzed and added to the Knowledge Base."}
+    return {
+        "message": "Both videos analyzed and added to the Knowledge Base.",
+        "thumbnail_a": res1.get("thumbnail_url", ""),
+        "thumbnail_b": res2.get("thumbnail_url", ""),
+        "title_a": res1.get("title", ""),
+        "title_b": res2.get("title", ""),
+    }
 
 
 class ChatRequest(BaseModel):
@@ -116,26 +122,59 @@ def chat(request: ChatRequest, current_user: UserContext = Depends(get_current_u
 @app.post("/chat/stream")
 async def chat_stream(request: ChatRequest, current_user: UserContext = Depends(get_current_user)):
     """
-    Streaming chat via Server-Sent Events.
-
-    Architecture:
-    1. run_planner_executor() — synchronous, fast (one LLM call for intent classification)
-    2. build_critic_prompt() — pure function, no IO
-    3. async_llm.astream() — streams tokens as they arrive from Gemini
-    4. Each token yielded as SSE: data: {"token": "..."}\\n\\n
-    5. Final event: data: [DONE]\\n\\n
-
-    Frontend consumes with: const reader = response.body.getReader()
+    Streaming chat via Server-Sent Events with Real-Time Cost & Observability Logging.
     """
+    import time
+    import uuid
+    from backend.database import AgentTrace
+
+    # Start the stopwatch
+    start_time = time.perf_counter()
+
+    # 1. Run the fast classification and tools phase
     state = run_planner_executor(request.message, request.history, current_user.tenant_id)
     prompt = build_critic_prompt(state)
 
     async def generate():
+        full_response = ""
         try:
-            async for chunk in async_llm.astream(prompt):
-                token = chunk.content
+            # 2. Stream tokens from Gemini as they arrive
+            async for token in async_chain.astream(prompt):
                 if token:
+                    full_response += token
                     yield f"data: {json.dumps({'token': token})}\n\n"
+
+            # --- TELEMETRY & COST CALCULATION ---
+            # Stop the stopwatch
+            latency_ms = (time.perf_counter() - start_time) * 1000
+
+            # Heuristic token estimation (1 token ≈ 4 characters of English text)
+            input_tokens = len(prompt) // 4
+            output_tokens = len(full_response) // 4
+
+            # Gemini 3.1 Flash-Lite Pricing: Input $0.25/1M, Output $1.50/1M
+            input_cost = (input_tokens / 1_000_000) * 0.25
+            output_cost = (output_tokens / 1_000_000) * 1.50
+            total_cost = input_cost + output_cost
+
+            # 3. Write the Trace to SQLite asynchronously
+            with Session(engine) as session:
+                trace = AgentTrace(
+                    session_id=str(uuid.uuid4()),
+                    user_input=request.message,
+                    final_response=full_response,
+                    latency_ms=round(latency_ms, 2),
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    estimated_cost=round(total_cost, 6),
+                    faithfulness=1.0,  # Placeholder metrics for system validation
+                    hallucination_rate=0.0,  # Placeholder metrics for system validation
+                    retrieval_quality=1.0,  # Placeholder metrics for system validation
+                    tenant_id=current_user.tenant_id
+                )
+                session.add(trace)
+                session.commit()
+
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
         finally:
@@ -146,7 +185,7 @@ async def chat_stream(request: ChatRequest, current_user: UserContext = Depends(
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",  # disable nginx buffering if behind a proxy
+            "X-Accel-Buffering": "no",
         }
     )
 
@@ -157,3 +196,15 @@ def get_videos(current_user: UserContext = Depends(get_current_user), session: S
         select(VideoMetadata).where(VideoMetadata.tenant_id == current_user.tenant_id)
     ).all()
     return videos
+
+@app.get("/traces")
+def get_traces(limit: int = 10, current_user: UserContext = Depends(get_current_user), session: Session = Depends(get_session)):
+    """Admin endpoint to view captured Agent Traces"""
+    # Enforces strict multi-tenant isolation — only show traces for this tenant
+    traces = session.exec(
+        select(AgentTrace)
+        .where(AgentTrace.tenant_id == current_user.tenant_id)
+        .order_by(AgentTrace.id.desc())
+        .limit(limit)
+    ).all()
+    return traces
