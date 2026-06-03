@@ -231,13 +231,22 @@ def process_video(url: str, tenant_id: int, video_label: str = "A") -> dict:
     views    = info.get("view_count", 0) or 0
     likes    = info.get("like_count", 0) or 0
     comments = info.get("comment_count", 0) or 0
-    creator  = info.get("uploader", "Unknown")
+    creator  = info.get("uploader", "") or info.get("channel", "") or "Unknown"
     subs     = info.get("channel_follower_count", 0) or 0
     title    = info.get("title", "Unknown Video")
     tags     = info.get("tags", []) or []
     hashtags = json.dumps([f"#{t}" for t in tags[:15]])  # store top 15 as JSON
     upload_date = info.get("upload_date", "") or ""       # YYYYMMDD string
     duration    = info.get("duration", 0) or 0             # integer seconds
+
+    # Thumbnail: prefer highest-res from thumbnails list, fall back to thumbnail field.
+    # yt-dlp always populates at least one of these for both YouTube and Instagram.
+    thumbnail_url = ""
+    thumbnails = info.get("thumbnails") or []
+    if thumbnails:
+        thumbnail_url = thumbnails[-1].get("url", "") or ""
+    if not thumbnail_url:
+        thumbnail_url = info.get("thumbnail", "") or ""
 
     # ── 2. Engagement rate ────────────────────────────────────────────────────
     engagement_rate = round(((likes + comments) / views * 100) if views > 0 else 0.0, 2)
@@ -285,6 +294,7 @@ def process_video(url: str, tenant_id: int, video_label: str = "A") -> dict:
         "platform":        platform,
         "video_label":     video_label,
         "tenant_id":       tenant_id,
+        "thumbnail_url":   thumbnail_url,
     }
 
     # ── 5. Chunk + embed into ChromaDB ────────────────────────────────────────
@@ -309,6 +319,7 @@ def process_video(url: str, tenant_id: int, video_label: str = "A") -> dict:
             duration=duration,
             platform=platform,
             video_label=video_label,
+            thumbnail_url=thumbnail_url,
             tenant_id=tenant_id,
         )
         session.add(video_record)
