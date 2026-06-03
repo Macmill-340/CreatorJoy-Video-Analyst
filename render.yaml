@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: creatorjoy-api
+    runtime: python
+    buildCommand: "apt-get install -y ffmpeg && pip install -r requirements.txt"
+    startCommand: "uvicorn backend.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: CORS_ORIGINS
+        value: https://creatorjoy-frontend.onrender.com
+
+  - type: web
+    name: creatorjoy-frontend
+    runtime: static
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://creatorjoy-api.onrender.com
