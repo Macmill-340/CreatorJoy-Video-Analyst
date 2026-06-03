@@ -4,19 +4,19 @@ A multi-tenant AI agent that ingests two short-form videos (YouTube or Instagram
 
 ## Tech stack (and why)
 
-| Layer        | Choice                                | Reason                                                                 |
-|--------------|---------------------------------------|------------------------------------------------------------------------|
-| API          | FastAPI + Uvicorn                     | Async support out of the box, native SSE via StreamingResponse         |
-| Auth         | JWT (PyJWT) + bcrypt + SQLModel       | Stateless, tenant scoped, no session table to maintain                 |
-| DB           | SQLite via SQLModel                   | Zero ops for the demo, swap to Postgres by changing one URL            |
-| Vector store | ChromaDB (local persist)              | No managed service required, can migrate to Pinecone/Qdrant at scale   |
-| Embeddings   | HuggingFace all-MiniLM-L6-v2          | 384-dim, fast, runs on CPU                                             |
-| Agent        | LangGraph (planner → executor → critic) | Explicit state machine, each node is independently testable           |
-| LLM          | Gemini 2.0 Flash Lite                 | ~$0.075/1M input tokens — 200x cheaper than GPT-4o for this workload   |
-| YT transcripts | yt-dlp signed CDN subtitle URLs     | youtube-transcript-api now throws PoTokenRequired on servers           |
-| IG transcripts | faster-whisper `base` int8          | 4x faster than openai-whisper on CPU, same model weights               |
-| Frontend     | Vite + React + Tailwind               | Sub-100ms HMR, static build, no SSR overhead for a chat SPA            |
-| Streaming    | Server-Sent Events                    | Browser-native, no WebSocket handshake, simple to reconnect            |
+| Layer          | Choice                                  | Reason                                                               |
+|----------------|-----------------------------------------|----------------------------------------------------------------------|
+| API            | FastAPI + Uvicorn                       | Async support out of the box, native SSE via StreamingResponse       |
+| Auth           | JWT (PyJWT) + bcrypt + SQLModel         | Stateless, tenant scoped, no session table to maintain               |
+| DB             | SQLite via SQLModel                     | Zero ops for the demo, swap to Postgres by changing one URL          |
+| Vector store   | ChromaDB (local persist)                | No managed service required, can migrate to Pinecone/Qdrant at scale |
+| Embeddings     | HuggingFace all-MiniLM-L6-v2            | 384-dim, fast, runs on CPU                                           |
+| Agent          | LangGraph (planner → executor → critic) | Explicit state machine, each node is independently testable          |
+| LLM            | Gemini 3.1 Flash-Lite                   | $0.25/1M input tokens — 10x cheaper than GPT-4o for this workload    |
+| YT transcripts | yt-dlp signed CDN subtitle URLs         | youtube-transcript-api now throws PoTokenRequired on servers         |
+| IG transcripts | faster-whisper `base` int8              | 4x faster than openai-whisper on CPU, same model weights             |
+| Frontend       | Vite + React + Tailwind                 | Sub-100ms HMR, static build, no SSR overhead for a chat SPA          |
+| Streaming      | Server-Sent Events                      | Browser-native, no WebSocket handshake, simple to reconnect          |
 
 ## Architecture
 
@@ -36,7 +36,7 @@ A multi-tenant AI agent that ingests two short-form videos (YouTube or Instagram
    │             │
    │ /chat       │──→ LangGraph: planner → executor → critic
    │ /chat/stream│        │
-   │             │        └──→ Gemini 2.0 Flash Lite (streaming for /stream)
+   │             │        └──→ Gemini 3.1 Flash-Lite (streaming for /stream)
    └─────────────┘
 ```
 
@@ -99,11 +99,14 @@ Then restart the backend — `create_db_and_table()` rebuilds everything.
 
 **Per-video cost today:**
 - yt-dlp + ChromaDB + Whisper (CPU): zero marginal $
-- Gemini 2.0 Flash Lite at ~3K input tokens per analysis: ≈ $0.0001
-- Chat turn at ~2K tokens: ≈ $0.00007
+- Gemini 3.1 Flash-Lite at ~3K input tokens + ~300 output tokens per analysis:
+  - Input: 3,000 * ($0.25 / 1,000,000) = $0.00075
+  - Output: 300 * ($1.50 / 1,000,000) = $0.00045
+  - Total per video analysis: ≈ $0.0012
+- Chat turn at ~2K tokens (1.8K input + 200 output): ≈ $0.00075
 
 **At 1000 creators × 2 videos × ~5 chat turns:**
-- 2000 ingestions, 10,000 chat turns → roughly $1-5/day in Gemini spend.
+- 2000 ingestions, 10,000 chat turns → roughly $10/day in Gemini spend.
 - Whisper on a single CPU worker would saturate. The right move at scale is one of:
   - Self-hosted faster-whisper on a small GPU (T4 or better) — handles ~20x throughput
   - AssemblyAI batch transcription at ~$0.01/reel — no infra to manage
@@ -112,7 +115,7 @@ Then restart the backend — `create_db_and_table()` rebuilds everything.
 
 **Why not the alternatives:**
 - OpenAI Whisper API ($0.006/min) → 100% more expensive than self-hosted faster-whisper.
-- GPT-4o ($15/1M tokens) → 200x more expensive than Gemini Flash Lite for the same routing+RAG.
+- GPT-4o ($2.50/1M input tokens) → 10x more expensive than Gemini 3.1 Flash-Lite for the same routing+RAG.
 - Pinecone from day one → unnecessary $70/mo while ChromaDB still fits.
 
 ## File layout
