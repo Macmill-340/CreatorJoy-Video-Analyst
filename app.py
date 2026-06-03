@@ -149,24 +149,71 @@ with tab_dashboard:
     if not st.session_state.token:
         st.warning("⚠️ Please log in to view the dashboard.")
     else:
-        st.markdown("### 📊 Ingested Video Database")
-        st.caption("Metrics and metadata extracted from YouTube.")
+        if st.button("🔄 Refresh Dashboard"):
+            st.session_state["dash_videos"] = None
+            st.session_state["dash_traces"] = None
 
-        if st.button("Refresh Video Data"):
-            try:
-                response = requests.get(f"{BASE_URL}/videos", headers=auth_headers())
-                if response.status_code == 200:
-                    videos = response.json()
-                    if videos:
-                        df = pd.DataFrame(videos)
-                        df = df.drop(columns=["id", "tenant_id"], errors="ignore")
-                        st.dataframe(df, width="stretch")
-                    else:
-                        st.info("No videos analyzed yet for this tenant.")
-                else:
-                    st.error("Failed to fetch videos.")
-            except Exception as e:
-                st.error(f"Backend error: {e}")
+        if "dash_videos" not in st.session_state:
+            st.session_state["dash_videos"] = None
+        if "dash_traces" not in st.session_state:
+            st.session_state["dash_traces"] = None
+
+        try:
+            v_resp = requests.get(f"{BASE_URL}/videos", headers=auth_headers())
+            if v_resp.status_code == 200:
+                st.session_state["dash_videos"] = v_resp.json()
+        except Exception as e:
+            st.error(f"Could not load videos: {e}")
+
+        try:
+            t_resp = requests.get(f"{BASE_URL}/traces?limit=20", headers=auth_headers())
+            if t_resp.status_code == 200:
+                st.session_state["dash_traces"] = t_resp.json()
+        except Exception as e:
+            st.error(f"Could not load traces: {e}")
+
+        st.markdown("### 📹 Ingested Video Database")
+        st.caption("Metadata and engagement metrics extracted per analysis session.")
+
+        videos = st.session_state.get("dash_videos")
+        if videos:
+            df_v = pd.DataFrame(videos)
+            df_v = df_v.drop(columns=["id", "tenant_id", "thumbnail_url"], errors="ignore")
+            st.dataframe(df_v, use_container_width=True)
+        else:
+            st.info("No videos analyzed yet.")
+
+        st.markdown("---")
+
+        st.markdown("### 🔍 Agent Traces & Cost Observability")
+        st.caption("Latency, token usage, and estimated cost per chat query.")
+
+        traces = st.session_state.get("dash_traces")
+        if traces:
+            df_t = pd.DataFrame(traces)
+            df_t = df_t.drop(columns=["id", "tenant_id", "session_id"], errors="ignore")
+
+            total_cost    = df_t["estimated_cost"].sum()
+            avg_latency   = df_t["latency_ms"].mean()
+            total_queries = len(df_t)
+            total_tokens  = (df_t["input_tokens"] + df_t["output_tokens"]).sum()
+
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Total Queries",  total_queries)
+            m2.metric("Avg Latency",    f"{avg_latency:,.0f} ms")
+            m3.metric("Total Tokens",   f"{total_tokens:,}")
+            m4.metric("Estimated Cost", f"${total_cost:.4f}")
+
+            display_cols = [
+                "user_input", "latency_ms", "input_tokens",
+                "output_tokens", "estimated_cost",
+                "faithfulness", "hallucination_rate", "retrieval_quality",
+                "created_at",
+            ]
+            display_cols = [c for c in display_cols if c in df_t.columns]
+            st.dataframe(df_t[display_cols], use_container_width=True)
+        else:
+            st.info("No agent traces yet — send a chat message first.")
 
 # ── TAB 3: Login ──────────────────────────────────────────────────────────────
 with tab_auth:
