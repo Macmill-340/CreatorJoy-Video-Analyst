@@ -37,6 +37,7 @@ class VideoMetadata(SQLModel, table=True):
     duration: int = Field(default=0)            # seconds
     platform: str = Field(default="youtube")    # "youtube" or "instagram"
     video_label: str = Field(default="A")       # "A" or "B" per analysis session
+    thumbnail_url: str = Field(default="")      # thumbnail/cover image URL for preview
     tenant_id: int = Field(foreign_key="tenant.id", index=True)
     created_at: datetime = Field(default_factory=datetime.now)
 
