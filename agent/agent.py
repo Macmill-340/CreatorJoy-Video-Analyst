@@ -36,7 +36,7 @@ async_llm = ChatGoogleGenerativeAI(
     api_key=api_key,
     streaming=True,
 )
-
+async_chain = async_llm | StrOutputParser()
 
 def planner_node(state: AgentState):
     query = state["original_query"]
